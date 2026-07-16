@@ -82,9 +82,12 @@ jobs:
         run: |
           set -x
           mkdir -p build/artifacts
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa; do
-            cp "$f" build/artifacts/
-          done
+          IPA="bazel-bin/Telegram/Telegram.ipa"
+          if [ ! -f "$IPA" ]; then
+            IPA="$(find -L bazel-bin bazel-out -type f -name 'Telegram.ipa' -path '*/Telegram/Telegram.ipa' 2>/dev/null | head -1)"
+          fi
+          echo "Using IPA: $IPA"
+          cp -L "$IPA" build/artifacts/Telegram.ipa
           ls -lh build/artifacts
 
       - name: Upload the IPA artifact
