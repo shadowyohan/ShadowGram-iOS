@@ -1,0 +1,96 @@
+name: Build ShadowGram IPA
+
+# Builds an unsigned (fake-codesigned) Telegram/ShadowGram .ipa in the cloud, with no
+# Apple Developer account required. Download the artifact and re-sign it onto a real
+# iPhone with Sideloadly + a free Apple ID.
+#
+# Run it manually: repo → Actions tab → "Build ShadowGram IPA" → Run workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    # The runner MUST provide the Xcode version pinned in versions.json (currently 26.2).
+    # If this label doesn't have it, change it to whichever macOS runner ships Xcode 26.2
+    # (see https://github.com/actions/runner-images for the current mapping).
+    runs-on: macos-15
+
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: '0'
+
+      - name: Free up disk space
+        run: |
+          set -x
+          sudo rm -rf /Applications/Xcode_1[45]*.app || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches/* || true
+          df -h /
+
+      - name: Select the pinned Xcode
+        run: |
+          set -x
+          XCODE_VERSION=$(python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])')
+          echo "Pinned Xcode: $XCODE_VERSION"
+          ls /Applications | grep -i xcode || true
+          if [ ! -d "/Applications/Xcode_$XCODE_VERSION.app" ]; then
+            echo "::error::Runner does not have Xcode $XCODE_VERSION. Change 'runs-on' to a runner image that ships it (see actions/runner-images)."
+            exit 1
+          fi
+          sudo xcode-select -s /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Move sources to a stable path
+        run: |
+          set -x
+          sudo mkdir -p /Users/Shared
+          sudo cp -R "$GITHUB_WORKSPACE" /Users/Shared/telegram-ios
+          sudo chown -R "$(whoami)" /Users/Shared/telegram-ios
+
+      - name: Import fake signing certificates
+        working-directory: /Users/Shared/telegram-ios
+        run: |
+          set -x
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+      - name: Build the IPA (fake-signed, device arm64)
+        working-directory: /Users/Shared/telegram-ios
+        run: |
+          set -x
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          COMMIT_COUNT="$(git rev-list --count HEAD)"
+          BUILD_NUMBER="$(($COMMIT_COUNT + $BUILD_NUMBER_OFFSET))"
+          echo "Build number: $BUILD_NUMBER"
+
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="/private/var/tmp/_bazel_containerhost" \
+            build \
+            --configurationPath="build-system/appstore-configuration.json" \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+      - name: Collect the IPA
+        working-directory: /Users/Shared/telegram-ios
+        run: |
+          set -x
+          mkdir -p build/artifacts
+          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa; do
+            cp "$f" build/artifacts/
+          done
+          ls -lh build/artifacts
+
+      - name: Upload the IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShadowGram-ipa
+          path: /Users/Shared/telegram-ios/build/artifacts/Telegram.ipa
+          if-no-files-found: error
+          retention-days: 30
