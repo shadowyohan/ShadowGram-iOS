@@ -221,13 +221,13 @@ public struct ShadowgramSettings: Codable, Equatable {
         let d = ShadowgramSettings.defaultSettings
 
         func boolValue(_ key: String, _ fallback: Bool) -> Bool {
-            if let raw = try? container.decodeIfPresent(Int32.self, forKey: StringCodingKey(key)), let raw {
+            if let raw = try? container.decodeIfPresent(Int32.self, forKey: StringCodingKey(key)) {
                 return raw != 0
             }
             return fallback
         }
         func enumValue<T: RawRepresentable>(_ key: String, _ fallback: T) -> T where T.RawValue == Int32 {
-            if let raw = try? container.decodeIfPresent(Int32.self, forKey: StringCodingKey(key)), let raw, let value = T(rawValue: raw) {
+            if let raw = try? container.decodeIfPresent(Int32.self, forKey: StringCodingKey(key)), let value = T(rawValue: raw) {
                 return value
             }
             return fallback
