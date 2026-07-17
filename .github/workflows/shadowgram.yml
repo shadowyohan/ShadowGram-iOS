@@ -60,7 +60,19 @@ jobs:
           set -x
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
 
-      - name: Build the IPA (fake-signed, device arm64)
+      # Persist Bazel's disk cache between runs so unchanged targets are not
+      # recompiled. GitHub caps a repo's cache at 10 GB — if Telegram's cache
+      # exceeds that the save is skipped with a warning (no failure), so this is
+      # a best-effort speedup, most effective for incremental ShadowGram changes.
+      - name: Restore Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: ~/telegram-bazel-cache
+          key: bazel-disk-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            bazel-disk-${{ runner.os }}-
+
+      - name: Build the IPA (fake-signed, device arm64, debug)
         working-directory: /Users/Shared/telegram-ios
         run: |
           set -x
@@ -69,12 +81,15 @@ jobs:
           BUILD_NUMBER="$(($COMMIT_COUNT + $BUILD_NUMBER_OFFSET))"
           echo "Build number: $BUILD_NUMBER"
 
+          # debug_arm64 skips -c opt / WMO / stripping -> much faster to compile
+          # than release, still a real device build installable via Sideloadly.
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="/private/var/tmp/_bazel_containerhost" \
+            --cacheDir="$HOME/telegram-bazel-cache" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
-            --configuration=release_arm64 \
+            --configuration=debug_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
       - name: Collect the IPA
