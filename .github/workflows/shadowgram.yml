@@ -60,6 +60,16 @@ jobs:
           set -x
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
 
+      - name: Rebrand fake profiles to custom bundle id
+        working-directory: /Users/Shared/telegram-ios
+        run: |
+          set -x
+          python3 build-system/Make/RebrandFakeProfiles.py \
+            build-system/fake-codesigning/profiles \
+            build-system/fake-codesigning/certs \
+            ph.telegra.Telegraph \
+            ru.shadowyohan.shadowgram
+
       # Persist Bazel's disk cache between runs so unchanged targets are not
       # recompiled. GitHub caps a repo's cache at 10 GB — if Telegram's cache
       # exceeds that the save is skipped with a warning (no failure), so this is
@@ -87,7 +97,7 @@ jobs:
             --bazelUserRoot="/private/var/tmp/_bazel_containerhost" \
             --cacheDir="$HOME/telegram-bazel-cache" \
             build \
-            --configurationPath="build-system/appstore-configuration.json" \
+            --configurationPath="build-system/shadowgram-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=debug_arm64 \
             --buildNumber="$BUILD_NUMBER"
